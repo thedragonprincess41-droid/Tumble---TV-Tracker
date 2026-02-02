@@ -1,0 +1,51 @@
+name: Cache Report on PR
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  cache-report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Restore node modules cache
+        id: cache-node
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Cache hit info
+        id: cache-info
+        run: |
+          echo "Cache hit: ${{ steps.cache-node.outputs.cache-hit }}"
+          if [ "${{ steps.cache-node.outputs.cache-hit }}" = "true" ]; then
+            echo "cache_status=hit" >> $GITHUB_OUTPUT
+          else
+            echo "cache_status=miss" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Post cache status comment on PR
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            <!-- cache-report -->
+            **Cache report**
+
+            ${{ steps.cache-info.outputs.cache_status == 'hit' && '✅ Cache hit — Node modules cache restored.' || '⚠️ Cache miss — dependencies will be installed on CI.' }}
+
+            _Cache key:_ `${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}`
+            
+            _This comment is updated on each new commit._

@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tumble.tv — Movies & TV Tracker</title>
+  <link rel="stylesheet" href="/styles.css" />  <link rel="canonical" href="https://www.tumble.tv/" />
+  <meta property="og:site_name" content="Tumble.tv" />
+  <meta property="og:url" content="https://www.tumble.tv/" />
+  <!-- Content Security Policy (adjust as needed) -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://www.tumble.tv https://api.themoviedb.org https://image.tmdb.org; connect-src 'self' https://api.themoviedb.org; img-src 'self' data: https://image.tmdb.org; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com"></head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="#/" class="logo" id="logo-link">
+        <img src="/assets/logo.svg" alt="Tumble.tv logo" />
+      </a>
+
+      <nav class="main-nav" id="main-nav">
+        <a href="#/movies" data-route="movies">Movies</a>
+        <a href="#/shows" data-route="shows">TV Shows</a>
+        <a href="#/login" id="nav-login">Login</a>
+        <a href="#/register" id="nav-register">Register</a>
+        <a href="#/library" id="nav-library" style="display:none">Library</a>
+      </nav>
+
+      <div class="search-wrap">
+        <input id="search-input" type="search" placeholder="Search movies & shows..." />
+        <button id="search-btn">Search</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container" id="app">
+    <!-- SPA content injected here -->
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div class="footer-links">
+        <a href="#/about">About</a>
+        <a href="#/pro">Pro</a>
+        <a href="#/terms">Terms</a>
+        <a href="#/contact">Contact</a>
+        <a href="#/privacy">Privacy</a>
+      </div>
+      <div class="copyright">© Tumble.tv</div>
+    </div>
+  </footer>
+
+  <!-- Templates -->
+  <template id="home-template">
+    <section class="home-hero">
+      <h1>Welcome to Tumble.tv</h1>
+      <p class="lead">Track what you watch, discover new titles, and keep your friends in the loop.</p>
+      <div class="home-features">
+        <div>
+          <h3>Features</h3>
+          <ul>
+            <li>Watchlists, Likes, Watched</li>
+            <li>Lists, Reviews & Friends</li>
+            <li>Search & Filters by genre, year, service</li>
+            <li>Trending & Personalized Feed</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Trending</h3>
+          <div id="trending-list" class="cards-grid"></div>
+        </div>
+      </div>
+    </section>
+  </template>
+
+  <template id="list-template">
+    <section>
+      <div class="controls">
+        <div class="left-controls">
+          <label>Sort:
+            <select id="sort-by">
+              <option value="popularity.desc">Popularity</option>
+              <option value="vote_average.desc">Rating</option>
+              <option value="original_title.asc">Title</option>
+              <option value="release_date.desc">Release</option>
+            </select>
+          </label>
+
+          <label>Order:
+            <select id="order-by">
+              <option value="desc">Descending</option>
+              <option value="asc">Ascending</option>
+            </select>
+          </label>
+
+          <button id="reset-filters" class="btn">Show all</button>
+
+          <label>Genre:
+            <select id="genre-filter"><option value="">All</option></select>
+          </label>
+
+          <label>Service:
+            <select id="service-filter"><option value="">All</option></select>
+          </label>
+
+          <label>Year:
+            <select id="year-filter"><option value="">All</option></select>
+          </label>
+        </div>
+
+        <div class="right-controls">
+          <div id="results-count">-- results</div>
+          <div id="items-per-page" style="margin-left:12px"><small>100 per page</small></div>
+        </div>
+      </div>
+
+      <div id="items-grid" class="cards-grid"></div>
+
+      <div class="pagination">
+        <button id="prev-page">Prev</button>
+        <label for="page-input" class="page-input-label">Page <input id="page-input" type="number" min="1" value="1" style="width:64px;margin:0 8px;" /> of <span id="total-pages">1</span></label>
+        <button id="page-go">Go</button>
+        <button id="next-page">Next</button>
+      </div>
+    </section>
+  </template>
+
+  <template id="details-template">
+    <div class="details-modal" id="details-modal">
+      <div class="details-content">
+        <button class="close-modal" id="close-details">✕</button>
+        <div class="details-backdrop" id="details-backdrop"></div>
+        <div class="details-main">
+          <img id="details-poster" class="details-poster" />
+          <div class="details-info">
+            <h2 id="details-title"></h2>
+            <p id="details-overview"></p>
+            <p><strong>Release:</strong> <span id="details-release"></span></p>
+            <p><strong>Genres:</strong> <span id="details-genres"></span></p>
+            <p><strong>On Services:</strong> <span id="details-providers"></span></p>
+
+            <div id="account-actions" style="margin-top:12px"></div>
+
+            <h4>Reviews</h4>
+            <div id="details-reviews"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <template id="auth-template">
+    <section class="auth">
+      <h2 id="auth-title">Login</h2>
+      <form id="auth-form">
+        <label>Username <input id="auth-username" required></label>
+        <label>Password <input id="auth-password" type="password" required></label>
+        <button type="submit" id="auth-submit">Submit</button>
+      </form>
+    </section>
+  </template>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

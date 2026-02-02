@@ -1,0 +1,136 @@
+name: Deploy to Netlify
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Cache node modules
+        id: cache-node
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+      - name: Cache hit info
+        run: |
+          echo "Cache hit: ${{ steps.cache-node.outputs.cache-hit }}"
+          if [ "${{ steps.cache-node.outputs.cache-hit }}" = "true" ]; then
+            echo "📦 Node modules cache restored."
+          else
+            echo "📦 No cache found, will install dependencies."
+          fi
+      - name: Install & build
+        env:
+          VITE_TMDB_API_KEY: ${{ secrets.VITE_TMDB_API_KEY }}
+          VITE_BASE_URL: https://www.tumble.tv/
+        run: npm ci && npm run build
+      - name: Install netlify-cli
+        run: npm i -g netlify-cli
+      - name: Deploy to Netlify
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: netlify deploy --dir=./dist --prod --auth $NETLIFY_AUTH_TOKEN --site $NETLIFY_SITE_ID --message "GitHub Actions deploy"
+
+      - name: Determine domains to verify
+        id: domains
+        run: |
+          if [ -f CNAME ]; then CNAME_DOMAIN=$(cat CNAME); elif [ -n "${{ secrets.CUSTOM_DOMAIN }}" ]; then CNAME_DOMAIN="${{ secrets.CUSTOM_DOMAIN }}"; else CNAME_DOMAIN="www.tumble.tv"; fi
+          APEX_DOMAIN=${CNAME_DOMAIN#www.}
+          DOMAINS="$CNAME_DOMAIN $APEX_DOMAIN"
+          echo "DOMAINS=$DOMAINS" >> $GITHUB_ENV
+          echo "Will verify domains: $DOMAINS"
+
+      - name: Wait for DNS propagation for all domains (retries)
+        run: |
+          set -e
+          for DOMAIN in $DOMAINS; do
+            echo "Checking DNS for $DOMAIN"
+            for i in $(seq 1 30); do
+              echo "Attempt $i: resolving $DOMAIN..."
+              ip=$(python -c "import socket,sys
+try:
+ sys.stdout.write(socket.gethostbyname(sys.argv[1]))
+except Exception:
+ pass" "$DOMAIN") || true
+              if [ -n "$ip" ]; then
+                echo "$DOMAIN resolved to $ip"
+                break
+              fi
+              sleep 10
+            done
+            if [ -z "$ip" ]; then
+              echo "DNS did not resolve for $DOMAIN after retries"
+              exit 1
+            fi
+          done
+
+      - name: Verify CNAME/A records point to Netlify
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: |
+          set -e
+          for DOMAIN in $DOMAINS; do
+            echo "Verifying domain: $DOMAIN"
+            if [ -n "$NETLIFY_AUTH_TOKEN" ] && [ -n "$NETLIFY_SITE_ID" ]; then
+              res=$(curl -s -H "Authorization: Bearer $NETLIFY_AUTH_TOKEN" "https://api.netlify.com/api/v1/sites/$NETLIFY_SITE_ID/domains" || true)
+              if echo "$res" | grep -q "\"hostname\":\"$DOMAIN\""; then
+                echo "Domain $DOMAIN configured on Netlify"
+                continue
+              fi
+            fi
+            cname=$(dig +short CNAME $DOMAIN || true)
+            if [ -n "$cname" ]; then
+              echo "CNAME for $DOMAIN: $cname"
+              if echo "$cname" | grep -qi "netlify.app\|netlify.com\|netlify"; then
+                echo "CNAME points to Netlify"
+                continue
+              fi
+            fi
+            a=$(dig +short A $DOMAIN || true)
+            echo "A record for $DOMAIN: $a"
+            if echo "$a" | grep -qE "^(75\.2\.|99\.81\.|185\.199\.108\.)"; then
+              echo "A record looks like Netlify/GitHub Pages"
+              continue
+            fi
+            echo "Domain $DOMAIN did not appear to point to Netlify"
+            exit 1
+          done
+
+      - name: HTTP health check for domains
+        run: |
+          for DOMAIN in $DOMAINS; do
+            for i in $(seq 1 15); do
+              echo "HTTP check attempt $i for https://$DOMAIN ..."
+              status=$(curl -s -o /dev/null -w "%{http_code}" https://$DOMAIN || echo "000")
+              echo "HTTP status: $status"
+              if [ "$status" = "200" ]; then
+                body=$(curl -s https://$DOMAIN || true)
+                if echo "$body" | grep -qi "tumble.tv"; then
+                  echo "HTTP content verified for $DOMAIN"
+                  break
+                else
+                  echo "Content check failed for $DOMAIN, retrying..."
+                fi
+              fi
+              sleep 8
+            done
+            if [ "$status" != "200" ]; then
+              echo "Health check failed for $DOMAIN"
+              exit 1
+            fi
+          done
