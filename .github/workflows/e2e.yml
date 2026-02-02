@@ -22,8 +22,8 @@ jobs:
         run: |
           python3 -m http.server 5000 &
           sleep 1
-      - name: Install Playwright browsers and deps
-        run: npx playwright install --with-deps
+      - name: Setup Playwright (browsers + deps)
+        uses: microsoft/playwright-github-action@v1
       - name: Run E2E test
         env:
           BASE_URL: http://localhost:5000
